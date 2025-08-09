@@ -57,6 +57,7 @@ export REDFISH_TIMEOUT="30"        # Optional, defaults to 30 seconds
 Configure the server in your MCP client with environment variables:
 
 #### Claude Desktop
+
 Add to `~/.config/claude-desktop/claude_desktop_config.json`:
 
 ```json
@@ -77,25 +78,46 @@ Add to `~/.config/claude-desktop/claude_desktop_config.json`:
 }
 ```
 
-#### Continue.dev
-Add to your Continue configuration:
+#### LM Studio
+
+Add to your LM Studio configuration (`mcp.json`):
 
 ```json
 {
-  "mcpServers": [
-    {
-      "name": "redfish",
-      "command": "uv",
-      "args": ["run", "redfish-mcp-server"],
-      "cwd": "/path/to/your/redfish-mcp-server",
-      "env": {
-        "REDFISH_HOST": "https://192.168.1.100",
-        "REDFISH_USERNAME": "admin",
-        "REDFISH_PASSWORD": "password123",
-        "REDFISH_VERIFY_SSL": "false"
-      }
+  "mcpServers": {
+      "redfish": {
+        "command": "uv",
+        "args": [
+          "--directory",
+          "C:\\Users\\MyUser\\repos\\redfish-mcp-server",
+          "run",
+          "mcp",
+          "run",
+          "main.py"
+        ],
+        "env": {
+          "REDFISH_HOST": "http://localhost:8000",
+          "REDFISH_USERNAME": "admin",
+          "REDFISH_PASSWORD": "password123"
+        }
     }
-  ]
+  }
+}
+```
+
+If developing under Windows with WSL2 where the server is running in WSL, you may need to set the `REDFISH_HOST` to the WSL IP address or use `localhost` if accessing from Windows:
+
+```json
+{
+  "mcpServers": {
+      "redfish": {
+        "command": "bash",
+        "args": [
+          "-c",
+          "REDFISH_HOST=http://localhost:8000 REDFISH_USERNAME=admin REDFISH_PASSWORD=password123 /home/carlosedp/.local/bin/uv --directory /home/carlosedp/repos/redfish-mcp-server run mcp run main.py"
+        ]
+      }
+  }
 }
 ```
 

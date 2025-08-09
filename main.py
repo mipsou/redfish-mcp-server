@@ -6,8 +6,6 @@ A Model Context Protocol server that provides tools for controlling
 Redfish-enabled hardware and simulators.
 """
 
-import asyncio
-import json
 import logging
 import os
 from typing import Any, Dict, List, Optional
@@ -148,6 +146,8 @@ class SystemInfo(BaseModel):
     processor_summary: Dict[str, Any] = Field(default_factory=dict)
     memory_summary: Dict[str, Any] = Field(default_factory=dict)
     status: Dict[str, Any] = Field(default_factory=dict)
+    chassis: Optional[List[str]] = None  # List of chassis IDs associated with the system
+    managers: Optional[List[str]] = None  # List of manager IDs associated with the system
 
 class ChassisInfo(BaseModel):
     """Chassis information structure"""
@@ -357,7 +357,9 @@ def redfish_configure(
 
 @mcp.tool()
 def redfish_get_system_info() -> SystemInfoResponse:
-    """Get system information and inventory"""
+    """Get system information and inventory
+       This returns a list of systems with their details.
+    """
     if not redfish_client:
         raise ValueError("Please configure Redfish connection first using redfish_configure tool.")
 
@@ -377,7 +379,9 @@ def redfish_get_system_info() -> SystemInfoResponse:
                 system_type=system_data.get("SystemType"),
                 processor_summary=system_data.get("ProcessorSummary", {}),
                 memory_summary=system_data.get("MemorySummary", {}),
-                status=system_data.get("Status", {})
+                status=system_data.get("Status", {}),
+                chassis=[chassis["@odata.id"] for chassis in system_data.get("Links", {}).get("Chassis", [])],
+                managers=[manager["@odata.id"] for manager in system_data.get("Links", {}).get("ManagedBy", [])]
             )
             system_list.append(system_info)
 
@@ -389,7 +393,9 @@ def redfish_get_system_info() -> SystemInfoResponse:
 
 @mcp.tool()
 def redfish_get_chassis_info() -> List[ChassisInfo]:
-    """Get chassis information and inventory"""
+    """Get chassis information and inventory
+       This returns a list of chassis with their details.
+    """
     if not redfish_client:
         raise ValueError("Please configure Redfish connection first using redfish_configure tool.")
 
@@ -416,7 +422,9 @@ def redfish_get_chassis_info() -> List[ChassisInfo]:
 
 @mcp.tool()
 def redfish_get_manager_info() -> List[ManagerInfo]:
-    """Get manager information and inventory"""
+    """Get manager information and inventory
+       This returns a list of managers with their details.
+    """
     if not redfish_client:
         raise ValueError("Please configure Redfish connection first using redfish_configure tool.")
 
@@ -448,13 +456,13 @@ def redfish_get_manager_info() -> List[ManagerInfo]:
 @mcp.tool()
 def redfish_power_control(
     action: str,
-    system_id: str = "1"
+    system_id: str
 ) -> PowerControlResult:
     """Control system power state
 
     Args:
         action: Power action (On, ForceOff, GracefulShutdown, ForceRestart, GracefulRestart)
-        system_id: System ID
+        system_id: System ID obtained from redfish_get_system_info tool
     """
     if not redfish_client:
         raise ValueError("Please configure Redfish connection first using redfish_configure tool.")
@@ -485,7 +493,7 @@ def redfish_power_control(
 
 @mcp.tool()
 def redfish_get_event_logs(
-    manager_id: str = "1",
+    manager_id: str,
     log_type: str = "Manager",
     limit: int = 50
 ) -> EventLogsResponse:
@@ -539,11 +547,11 @@ def redfish_get_event_logs(
 
 
 @mcp.tool()
-def redfish_get_health_status(system_id: str = "1") -> HealthStatusResponse:
-    """Get system health and status information
+def redfish_get_health_status(system_id: str) -> HealthStatusResponse:
+    """Get system health and status information for each system
 
     Args:
-        system_id: System ID
+        system_id: System ID obtained from redfish_get_system_info tool
     """
     if not redfish_client:
         raise ValueError("Please configure Redfish connection first using redfish_configure tool.")
@@ -607,14 +615,14 @@ def redfish_manage_users(action: str) -> UserAccountsResponse | dict:
 
 @mcp.tool()
 def redfish_get_sensors(
-    sensor_type: str = "All",
-    system_id: str = "1"
+    system_id: str,
+    sensor_type: str = "All"
 ) -> SensorsResponse:
     """Get sensor readings (temperature, fans, power, etc.)
 
     Args:
         sensor_type: Type of sensors to retrieve (Temperature, Fan, Power, Voltage, All)
-        system_id: System ID
+        system_id: System ID obtained from redfish_get_system_info tool
     """
     if not redfish_client:
         raise ValueError("Please configure Redfish connection first using redfish_configure tool.")
