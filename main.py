@@ -618,39 +618,57 @@ def redfish_get_sensors(
     system_id: str,
     sensor_type: str = "All"
 ) -> SensorsResponse:
-    """Get sensor readings (temperature, fans, power, etc.)
+    """Get sensor readings (temperature, fans, power, etc.) for a specific system
 
     Args:
-        sensor_type: Type of sensors to retrieve (Temperature, Fan, Power, Voltage, All)
         system_id: System ID obtained from redfish_get_system_info tool
+        sensor_type: Type of sensors to retrieve (Temperature, Fan, All)
     """
     if not redfish_client:
         raise ValueError("Please configure Redfish connection first using redfish_configure tool.")
 
-    valid_sensor_types = ["Temperature", "Fan", "Power", "Voltage", "All"]
+    valid_sensor_types = ["Temperature", "Fan", "All"]
     if sensor_type not in valid_sensor_types:
         raise ValueError(f"Invalid sensor type. Must be one of: {valid_sensor_types}")
 
     try:
-        chassis_data = redfish_client.get("/redfish/v1/Chassis/")
+        # Get the specific system to find its associated chassis
+        system_data = redfish_client.get(f"/redfish/v1/Systems/{system_id}")
+        system_chassis = system_data.get("Links", {}).get("Chassis", [])
+
+        if not system_chassis:
+            # Fallback: if no chassis links found, try to find chassis by other means
+            chassis_data = redfish_client.get("/redfish/v1/Chassis/")
+            system_chassis = chassis_data.get("Members", [])
+
         sensor_list = []
 
-        for chassis_url in chassis_data.get("Members", []):
-            chassis_info = redfish_client.get(chassis_url["@odata.id"])
+        for chassis_ref in system_chassis:
+            chassis_url = chassis_ref.get("@odata.id", chassis_ref)
+            chassis_info = redfish_client.get(chassis_url)
             chassis_name = chassis_info.get("Name", "Unknown")
 
             try:
-                thermal_data = redfish_client.get(chassis_url["@odata.id"] + "/Thermal")
-                power_data = redfish_client.get(chassis_url["@odata.id"] + "/Power")
+                thermal_data = redfish_client.get(chassis_url + "/Thermal")
+                # power_data = redfish_client.get(chassis_url + "/Power")
 
-                sensor_data = {
-                    "Temperatures": thermal_data.get("Temperatures", []),
-                    "Fans": thermal_data.get("Fans", []),
-                    "PowerSupplies": power_data.get("PowerSupplies", []),
-                    "Voltages": power_data.get("Voltages", [])
-                }
-            except Exception:
-                sensor_data = {"error": "Sensor data not available"}
+                # Filter sensor data based on sensor_type
+                sensor_data = {}
+
+                if sensor_type in ["Temperature", "All"]:
+                    sensor_data["Temperatures"] = thermal_data.get("Temperatures", [])
+
+                if sensor_type in ["Fan", "All"]:
+                    sensor_data["Fans"] = thermal_data.get("Fans", [])
+
+                # if sensor_type in ["Power", "All"]:
+                #     sensor_data["PowerSupplies"] = power_data.get("PowerSupplies", [])
+
+                # if sensor_type in ["Voltage", "All"]:
+                #     sensor_data["Voltages"] = power_data.get("Voltages", [])
+
+            except Exception as e:
+                sensor_data = {"error": f"Sensor data not available: {str(e)}"}
 
             sensor_response = SensorDataResponse(
                 chassis_name=chassis_name,
@@ -663,7 +681,7 @@ def redfish_get_sensors(
             sensors=sensor_list
         )
     except Exception as e:
-        logger.error(f"Error getting sensors: {e}")
+        logger.error(f"Error getting sensors for system {system_id}: {e}")
         raise
 
 
