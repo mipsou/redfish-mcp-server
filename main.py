@@ -357,8 +357,9 @@ def redfish_configure(
 
 @mcp.tool()
 def redfish_get_system_info() -> SystemInfoResponse:
-    """Get system information and inventory
-       This returns a list of systems with their details.
+    """
+    Get system information and inventory
+    This returns a list of systems with their details.
     """
     if not redfish_client:
         raise ValueError("Please configure Redfish connection first using redfish_configure tool.")
@@ -393,8 +394,9 @@ def redfish_get_system_info() -> SystemInfoResponse:
 
 @mcp.tool()
 def redfish_get_chassis_info() -> List[ChassisInfo]:
-    """Get chassis information and inventory
-       This returns a list of chassis with their details.
+    """
+    Get chassis information and inventory
+   This returns a list of chassis with their details.
     """
     if not redfish_client:
         raise ValueError("Please configure Redfish connection first using redfish_configure tool.")
@@ -422,8 +424,9 @@ def redfish_get_chassis_info() -> List[ChassisInfo]:
 
 @mcp.tool()
 def redfish_get_manager_info() -> List[ManagerInfo]:
-    """Get manager information and inventory
-       This returns a list of managers with their details.
+    """
+    Get manager information and inventory
+    This returns a list of managers with their details.
     """
     if not redfish_client:
         raise ValueError("Please configure Redfish connection first using redfish_configure tool.")
@@ -492,52 +495,38 @@ def redfish_power_control(
 
 
 @mcp.tool()
-def redfish_get_event_logs(
+def redfish_get_manager_logs(
     manager_id: str,
-    log_type: str = "Manager",
     limit: int = 50
 ) -> EventLogsResponse:
-    """Retrieve system event logs
+    """
+    Retrieve manager event logs
 
     Args:
-        manager_id: ID of the manager to retrieve logs from
-        log_type: Type of log to retrieve (System, Security, Manager)
+        manager_id: ID of the manager to retrieve logs from obtained from redfish_get_manager_info tool
         limit: Maximum number of entries to retrieve
     """
     if not redfish_client:
         raise ValueError("Please configure Redfish connection first using redfish_configure tool.")
 
-    valid_log_types = ["System", "Security", "Manager"]
-    if log_type not in valid_log_types:
-        raise ValueError(f"Invalid log type. Must be one of: {valid_log_types}")
-
     try:
         log_entries = []
-        if log_type == "Manager":
-            logs_response = redfish_client.get(f"/redfish/v1/Managers/{manager_id}/LogServices/Log/Entries")
-            entries = logs_response.get("Members", [])[:limit]
+        logs_response = redfish_client.get(f"/redfish/v1/Managers/{manager_id}/LogServices/Log/Entries")
+        entries = logs_response.get("Members", [])[:limit]
 
-            for entry_url in entries:
-                entry_data = redfish_client.get(entry_url["@odata.id"])
-                log_entry = LogEntry(
-                    created=entry_data.get("Created"),
-                    severity=entry_data.get("Severity"),
-                    message=entry_data.get("Message"),
-                    entry_type=entry_data.get("EntryType")
-                )
-                log_entries.append(log_entry)
-        elif log_type == "Security":
-            # For Security logs, use the LogServices endpoint
-            logs_response = redfish_client.get(f"/redfish/v1/Managers/{manager_id}/LogServices/Security/Entries")
-        else:
-            # For System logs, use the LogServices endpoint
-            log_type = "System"
-            # Assuming the log type is "System" for general logs
-            # Adjust the endpoint as needed based on your Redfish implementation
+        for entry_url in entries:
+            entry_data = redfish_client.get(entry_url["@odata.id"])
+            log_entry = LogEntry(
+                created=entry_data.get("Created"),
+                severity=entry_data.get("Severity"),
+                message=entry_data.get("Message"),
+                entry_type=entry_data.get("EntryType")
+            )
+            log_entries.append(log_entry)
 
 
         return EventLogsResponse(
-            log_type=log_type,
+            log_type="Manager",
             entries=log_entries,
             count=len(log_entries)
         )
@@ -548,7 +537,8 @@ def redfish_get_event_logs(
 
 @mcp.tool()
 def redfish_get_health_status(system_id: str) -> HealthStatusResponse:
-    """Get system health and status information for each system
+    """
+    Get system health and status information for each system
 
     Args:
         system_id: System ID obtained from redfish_get_system_info tool
@@ -582,7 +572,8 @@ def redfish_get_health_status(system_id: str) -> HealthStatusResponse:
 
 @mcp.tool()
 def redfish_manage_users(action: str) -> UserAccountsResponse | dict:
-    """Manage user accounts
+    """
+    Manage user accounts
 
     Args:
         action: User management action (currently only 'list' is implemented)
@@ -618,7 +609,8 @@ def redfish_get_sensors(
     system_id: str,
     sensor_type: str = "All"
 ) -> SensorsResponse:
-    """Get sensor readings (temperature, fans, power, etc.) for a specific system
+    """
+    Get sensor readings (temperature, fans, power, etc.) for a specific system
 
     Args:
         system_id: System ID obtained from redfish_get_system_info tool
@@ -687,7 +679,8 @@ def redfish_get_sensors(
 
 @mcp.tool()
 def redfish_clear_logs(log_type: str = "System") -> ClearLogsResult:
-    """Clear system event logs
+    """
+    Clear system event logs
 
     Args:
         log_type: Type of log to clear (System, Security, Manager)
