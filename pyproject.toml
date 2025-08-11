@@ -21,7 +21,7 @@ dev = [
 ]
 
 [project.scripts]
-redfish-mcp-server = "redfish_mcp_server.main:mcp.run"
+redfish-mcp-server = "src.redfish_mcp_server.main:mcp.run"
 
 [build-system]
 requires = ["hatchling"]
