@@ -31,11 +31,8 @@ All communications with Redfish endpoints are authenticated using username/passw
 This project uses `uv` for dependency management:
 
 ```bash
-# Install dependencies
-uv sync
-
 # Install development dependencies
-uv sync --group dev
+uv sync
 ```
 
 ## Usage
@@ -182,162 +179,31 @@ This server is built with FastMCP, providing enhanced development experience:
 - **Structured Output**: All responses use Pydantic models for type safety
 - **Auto-generated Schemas**: Tools automatically generate JSON schemas from type hints
 
-### Running the Server
+### Running the Server for Development
 
 ```bash
 # Set environment variables for automatic configuration
 export REDFISH_HOST="https://192.168.1.100"
-export REDFISH_USERNAME="admin" 
+export REDFISH_USERNAME="admin"
 export REDFISH_PASSWORD="password123"
 export REDFISH_VERIFY_SSL="false"
 
-# Run the MCP server in production
-uv run redfish-mcp-server
-
-# Run in development mode with hot reloading
-uv run mcp dev src/redfish_mcp_server/main.py
-
-# Run with MCP inspector for debugging
-uv run mcp inspector src/redfish_mcp_server/main.py
+# Run in development mode with the inspector
+uv run mcp dev main.py
 ```
 
-### Testing Tools
+The server requires a Redfish hardware or simulator to connect to. Ensure the Redfish endpoint is accessible and the credentials are correct.
+
+You can use [Redfish-Mockup-Server](https://github.com/DMTF/Redfish-Mockup-Server) for testing with simulated Redfish endpoints. Get the mockup data from the [DMTF Redfish Mockup bundle](https://www.dmtf.org/documents/redfish-spmf/redfish-mockups-bundle-20214).
+
+Unpack them, install dependencies and run the mockup server:
 
 ```bash
-# Test the server import
-uv run python -c "from redfish_mcp_server.main import mcp; print('Server imported successfully!')"
+# Create a venv and install dependencies
+python -m venv venv
+source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+pip install -r requirements.txt
 
-# Test configuration status
-uv run python -c "
-from redfish_mcp_server.main import redfish_get_config_status
-print(redfish_get_config_status())
-"
+# Run the mockup server
+python redfishMockupServer.py --short-form -D public-rackmount1`
 ```
-
-### Code Formatting and Linting
-
-```bash
-# Format code
-uv run black .
-
-# Lint code  
-uv run ruff check .
-
-# Type checking
-uv run mypy .
-```
-
-### Testing
-
-```bash
-# Run tests
-uv run pytest
-
-# Run tests with verbose output
-uv run pytest -v
-
-# Run specific test
-uv run pytest tests/test_main.py::test_redfish_config
-```
-
-## Structured Output
-
-This server uses Pydantic models to provide structured, type-safe responses:
-
-### Response Models
-
-- **ConnectionResult**: Connection status and service information
-- **SystemInfoResponse**: System inventory and specifications  
-- **PowerControlResult**: Power operation results
-- **EventLogsResponse**: Event log entries with metadata
-- **HealthStatusResponse**: System and chassis health status
-- **UserAccountsResponse**: User account information
-- **SensorsResponse**: Sensor readings by chassis
-- **ConfigStatusResponse**: Configuration and connection status
-
-### Example Response Structure
-
-```json
-{
-  "systems": [
-    {
-      "name": "System",
-      "model": "PowerEdge R740",
-      "manufacturer": "Dell Inc.", 
-      "serial_number": "ABC123",
-      "power_state": "On",
-      "system_type": "Physical",
-      "processor_summary": {
-        "count": 2,
-        "model": "Intel(R) Xeon(R) Gold 6140 CPU @ 2.30GHz"
-      },
-      "memory_summary": {
-        "total_system_memory_gib": 128
-      },
-      "status": {
-        "state": "Enabled",
-        "health": "OK"
-      }
-    }
-  ]
-}
-```
-
-## Supported Redfish Operations
-
-This server implements the most commonly used Redfish operations:
-
-- **System Management**: Power control, system information
-- **Monitoring**: Event logs, health status, sensor readings
-- **User Management**: Account listing (creation/modification/deletion planned)
-- **Inventory**: Hardware components, specifications
-- **Configuration**: Connection management and status checking
-
-Additional operations can be added as needed.
-
-## FastMCP Benefits
-
-This implementation uses FastMCP which provides several advantages:
-
-1. **Developer Experience**:
-   - Hot reloading with `mcp dev`
-   - Built-in debugging with MCP inspector
-   - Automatic schema generation from type hints
-
-2. **Type Safety**:
-   - Pydantic models for all inputs and outputs
-   - Runtime validation of tool parameters
-   - Clear error messages for invalid inputs
-
-3. **Structured Output**:
-   - Consistent JSON responses with schemas
-   - Better integration with AI agents
-   - Self-documenting API through type annotations
-
-4. **Simplified Development**:
-   - Decorator-based tool registration
-   - Automatic parameter parsing
-   - Built-in error handling
-
-## Memory Integration
-
-The server can integrate with MCP memory to record operations and maintain context about the hardware being managed. This is optional and will be skipped if memory services are not available.
-
-## Requirements
-
-- Python 3.10+
-- Redfish-enabled hardware or simulator
-- Network access to BMC/iDRAC/iLO interfaces
-- uv package manager
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes with appropriate tests
-4. Ensure code passes linting and type checking
-5. Submit a pull request
-
-## License
-
-[Add your license here]
