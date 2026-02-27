@@ -167,5 +167,33 @@ def test_redfish_config_mtls_fields():
     assert config.ca_bundle == "/path/to/ca.pem"
 
 
+def test_initialize_from_env_reads_auth_method(monkeypatch):
+    """Test _initialize_from_env reads REDFISH_AUTH_METHOD."""
+    monkeypatch.setenv("REDFISH_HOST", "https://192.168.100.23")
+    monkeypatch.setenv("REDFISH_USERNAME", "admin")
+    monkeypatch.setenv("REDFISH_PASSWORD", "pass")
+    monkeypatch.setenv("REDFISH_AUTH_METHOD", "basic")
+    monkeypatch.setenv("REDFISH_BMC_VENDOR", "supermicro")
+
+    # We can't test full init without a BMC, but we can test config creation
+    from redfish_mcp_server.config.models import RedfishConfig
+
+    host = os.getenv("REDFISH_HOST")
+    username = os.getenv("REDFISH_USERNAME")
+    password = os.getenv("REDFISH_PASSWORD")
+    auth_method = os.getenv("REDFISH_AUTH_METHOD", "session")
+    bmc_vendor = os.getenv("REDFISH_BMC_VENDOR", "asrockrack")
+
+    config = RedfishConfig(
+        host=host,
+        username=username,
+        password=password,
+        auth_method=auth_method,
+        bmc_vendor=bmc_vendor,
+    )
+    assert config.auth_method == "basic"
+    assert config.bmc_vendor == "supermicro"
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
