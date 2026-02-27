@@ -1,16 +1,22 @@
 """Pydantic models for Redfish MCP server configuration and responses."""
 
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 
 class RedfishConfig(BaseModel):
     """Configuration for Redfish connection"""
-    host: str = Field(..., description="Redfish host URL")
+    host: str = Field(..., description="Redfish host URL (https:// recommended)")
     username: str = Field(..., description="Username for authentication")
-    password: str = Field(..., description="Password for authentication")
+    password: SecretStr = Field(..., description="Password for authentication")
     verify_ssl: bool = Field(default=False, description="Verify SSL certificates")
     timeout: int = Field(default=30, description="Request timeout in seconds")
+    auth_method: str = Field(default="session", description="Auth method: 'session' or 'basic'")
+    bmc_vendor: str = Field(default="asrockrack", description="BMC vendor (qualified: asrockrack)")
+    # Ready for phase 2 — mTLS
+    client_cert: Optional[str] = Field(default=None, description="Path to client certificate (.pem)")
+    client_key: Optional[SecretStr] = Field(default=None, description="Path to client private key")
+    ca_bundle: Optional[str] = Field(default=None, description="Path to CA bundle for SSL verification")
 
 
 class ConnectionResult(BaseModel):
