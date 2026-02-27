@@ -54,6 +54,8 @@ def _initialize_from_env() -> Optional[RedfishClient]:
     password = os.getenv('REDFISH_PASSWORD')
     verify_ssl = os.getenv('REDFISH_VERIFY_SSL', 'false').lower() in ('true', '1', 'yes')
     timeout = int(os.getenv('REDFISH_TIMEOUT', '30'))
+    auth_method = os.getenv('REDFISH_AUTH_METHOD', 'session')
+    bmc_vendor = os.getenv('REDFISH_BMC_VENDOR', 'asrockrack')
 
     if host and username and password:
         try:
@@ -62,7 +64,9 @@ def _initialize_from_env() -> Optional[RedfishClient]:
                 username=username,
                 password=password,
                 verify_ssl=verify_ssl,
-                timeout=timeout
+                timeout=timeout,
+                auth_method=auth_method,
+                bmc_vendor=bmc_vendor,
             )
             client = RedfishClient(config)
 
@@ -78,7 +82,7 @@ def _initialize_from_env() -> Optional[RedfishClient]:
     else:
         logger.info("Redfish environment variables not set. Use redfish_configure tool or set:")
         logger.info("  REDFISH_HOST, REDFISH_USERNAME, REDFISH_PASSWORD")
-        logger.info("  Optional: REDFISH_VERIFY_SSL, REDFISH_TIMEOUT")
+        logger.info("  Optional: REDFISH_VERIFY_SSL, REDFISH_TIMEOUT, REDFISH_AUTH_METHOD, REDFISH_BMC_VENDOR")
         return None
 
 
