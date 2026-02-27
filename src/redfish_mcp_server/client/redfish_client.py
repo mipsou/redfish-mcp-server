@@ -1,117 +1,193 @@
-"""Redfish client for API interactions."""
+"""Redfish client wrapping DMTF python-redfish-library."""
 
 import logging
 from typing import Any, Dict, Optional
-from urllib.parse import urljoin
 
-import requests
-import urllib3
+from redfish import redfish_client
 
 from ..config.models import RedfishConfig
-from ..utils.exceptions import ConnectionError, AuthenticationError, OperationError
-
-# Disable SSL warnings for self-signed certificates (common in BMCs)
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+from ..utils.exceptions import AuthenticationError, ConnectionError, OperationError
 
 logger = logging.getLogger(__name__)
 
+QUALIFIED_VENDORS = ("asrockrack",)
+
 
 class RedfishClient:
-    """Client for interacting with Redfish API"""
+    """Client for interacting with Redfish API via DMTF library."""
 
-    def __init__(self, config: RedfishConfig):
+    def __init__(self, config: RedfishConfig) -> None:
         self.config = config
-        self.session = requests.Session()
-        self.session.auth = (config.username, config.password)
-        self.session.verify = config.verify_ssl
+        self.base_url = config.host.rstrip("/")
         self.timeout = config.timeout
-        self.session.headers.update({
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        })
-        self.base_url = config.host.rstrip('/')
+        self._client: Any = None
+        self._auth_method: str = config.auth_method
 
-        logger.info(f"Initialized Redfish client for {self.base_url}")
+        self._log_security_warnings()
 
-    def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
-        """Make authenticated request to Redfish API"""
-        url = urljoin(self.base_url, endpoint)
+    # -- Security warnings ---------------------------------------------------
+
+    def _log_security_warnings(self) -> None:
+        """Log warnings based on security configuration."""
+        if self.base_url.startswith("http://"):
+            logger.warning(
+                "Unencrypted connection — credentials exposed on network: %s",
+                self.base_url,
+            )
+        elif not self.config.verify_ssl:
+            logger.warning(
+                "SSL certificate not verified — vulnerable to MITM: %s",
+                self.base_url,
+            )
+        else:
+            logger.info("Verified SSL connection: %s", self.base_url)
+
+        if self.config.bmc_vendor not in QUALIFIED_VENDORS:
+            logger.warning(
+                "Client qualified only for ASRock Rack BMC (AST2500). "
+                "Current vendor: %s",
+                self.config.bmc_vendor,
+            )
+
+    # -- Connection ----------------------------------------------------------
+
+    def _create_dmtf_client(self) -> Any:
+        """Create the underlying DMTF redfish client object."""
+        password = self.config.password.get_secret_value()
+        ca_file = self.config.ca_bundle if self.config.verify_ssl else None
+
+        return redfish_client(
+            base_url=self.base_url,
+            username=self.config.username,
+            password=password,
+            timeout=self.timeout,
+            cafile=ca_file,
+        )
+
+    def _login(self) -> None:
+        """Authenticate with session auth, fallback to basic."""
+        self._client = self._create_dmtf_client()
+
+        if self._auth_method == "session":
+            try:
+                self._client.login(auth="session")
+                logger.info("Session auth successful: %s", self.base_url)
+                return
+            except Exception as exc:
+                logger.warning(
+                    "Session auth failed — fallback to Basic Auth: %s", exc
+                )
+                self._auth_method = "basic"
+                # Re-create client for basic auth
+                self._client = self._create_dmtf_client()
+
         try:
-            # Add timeout to the request kwargs
-            kwargs.setdefault('timeout', self.timeout)
-            logger.debug(f"Making {method} request to {url}")
+            self._client.login(auth="basic")
+            logger.info("Basic auth successful: %s", self.base_url)
+        except Exception as exc:
+            logger.error("Authentication failed: %s", exc)
+            raise AuthenticationError(f"Authentication failed: {exc}")
 
-            response = self.session.request(method, url, **kwargs)
-            response.raise_for_status()
+    def _ensure_connected(self) -> None:
+        """Ensure client is connected, reconnect if needed."""
+        if self._client is None:
+            self._login()
 
-            result = response.json() if response.content else {}
-            logger.debug(f"Request successful: {method} {endpoint}")
-            return result
+    # -- Request handling ----------------------------------------------------
 
-        except requests.exceptions.ConnectionError as e:
-            logger.error(f"Connection failed to {url}: {e}")
-            raise ConnectionError(f"Connection failed: {e}")
-        except requests.exceptions.Timeout as e:
-            logger.error(f"Request timeout for {url}: {e}")
-            raise ConnectionError(f"Request timeout: {e}")
-        except requests.exceptions.HTTPError as e:
-            status_code = e.response.status_code
-            logger.error(f"HTTP error {status_code} for {url}: {e}")
-            
-            # Handle specific HTTP status codes with user-friendly messages
-            if status_code == 401:
-                raise AuthenticationError("Authentication failed: Invalid username or password")
-            elif status_code == 403:
-                raise OperationError("Access denied: Insufficient permissions for this operation")
-            elif status_code == 404:
-                # Check if this is a system-related endpoint
-                if "/Systems/" in endpoint:
-                    system_id = endpoint.split("/Systems/")[-1].split("/")[0]
-                    raise OperationError(f"System '{system_id}' not found")
-                elif "/Chassis/" in endpoint:
-                    chassis_id = endpoint.split("/Chassis/")[-1].split("/")[0]
-                    raise OperationError(f"Chassis '{chassis_id}' not found")
-                elif "/Managers/" in endpoint:
-                    manager_id = endpoint.split("/Managers/")[-1].split("/")[0]
-                    raise OperationError(f"Manager '{manager_id}' not found")
-                else:
-                    raise OperationError(f"Resource not found: {endpoint}")
-            elif status_code == 500:
-                raise OperationError("Server error: Redfish service encountered an internal error")
-            elif status_code == 503:
-                raise OperationError("Service unavailable: Redfish service is temporarily unavailable")
-            else:
-                raise OperationError(f"HTTP error {status_code}: {e}")
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Request failed for {url}: {e}")
-            raise OperationError(f"Request failed: {e}")
+    def _handle_response(self, response: Any) -> Dict[str, Any]:
+        """Convert DMTF RestResponse to dict with error handling."""
+        status = response.status
+
+        if status == 401:
+            # Token expired — try reconnect once
+            logger.info("Token expired — reconnecting session")
+            self._client = None
+            raise AuthenticationError("Token expired")
+        elif status == 403:
+            raise OperationError(
+                "Access denied: Insufficient permissions for this operation"
+            )
+        elif status == 404:
+            raise OperationError(f"Resource not found: {response.request.path}")
+        elif status >= 500:
+            raise OperationError(f"Server error (HTTP {status})")
+        elif status >= 400:
+            raise OperationError(f"Request failed (HTTP {status})")
+
+        return response.dict if response.dict else {}
 
     def get(self, endpoint: str) -> Dict[str, Any]:
-        """GET request to Redfish API"""
-        return self._make_request('GET', endpoint)
+        """GET request to Redfish API."""
+        self._ensure_connected()
+        try:
+            response = self._client.get(endpoint)
+            return self._handle_response(response)
+        except AuthenticationError:
+            # Retry once after re-login
+            self._login()
+            response = self._client.get(endpoint)
+            return self._handle_response(response)
+        except (ConnectionError, OperationError):
+            raise
+        except Exception as exc:
+            logger.error("GET %s failed: %s", endpoint, exc)
+            raise ConnectionError(f"Request failed: {exc}")
 
-    def post(self, endpoint: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """POST request to Redfish API"""
-        return self._make_request('POST', endpoint, json=data)
+    def post(
+        self, endpoint: str, data: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """POST request to Redfish API."""
+        self._ensure_connected()
+        try:
+            response = self._client.post(endpoint, body=data)
+            return self._handle_response(response)
+        except (ConnectionError, OperationError, AuthenticationError):
+            raise
+        except Exception as exc:
+            logger.error("POST %s failed: %s", endpoint, exc)
+            raise OperationError(f"Request failed: {exc}")
 
     def patch(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """PATCH request to Redfish API"""
-        return self._make_request('PATCH', endpoint, json=data)
+        """PATCH request to Redfish API."""
+        self._ensure_connected()
+        try:
+            response = self._client.patch(endpoint, body=data)
+            return self._handle_response(response)
+        except (ConnectionError, OperationError, AuthenticationError):
+            raise
+        except Exception as exc:
+            logger.error("PATCH %s failed: %s", endpoint, exc)
+            raise OperationError(f"Request failed: {exc}")
 
     def delete(self, endpoint: str) -> Dict[str, Any]:
-        """DELETE request to Redfish API"""
-        return self._make_request('DELETE', endpoint)
+        """DELETE request to Redfish API."""
+        self._ensure_connected()
+        try:
+            response = self._client.delete(endpoint)
+            return self._handle_response(response)
+        except (ConnectionError, OperationError, AuthenticationError):
+            raise
+        except Exception as exc:
+            logger.error("DELETE %s failed: %s", endpoint, exc)
+            raise OperationError(f"Request failed: {exc}")
 
     def test_connection(self) -> Dict[str, Any]:
-        """Test the connection by getting the service root"""
+        """Test the connection by getting the service root."""
         try:
+            self._login()
             return self.get("/redfish/v1/")
-        except Exception as e:
-            logger.error(f"Connection test failed: {e}")
+        except Exception as exc:
+            logger.error("Connection test failed: %s", exc)
             raise
 
-    def close(self):
-        """Close the session"""
-        if self.session:
-            self.session.close()
-            logger.debug("Redfish client session closed")
+    def close(self) -> None:
+        """Logout and close the session."""
+        if self._client is not None:
+            try:
+                self._client.logout()
+                logger.debug("Redfish session closed: %s", self.base_url)
+            except Exception as exc:
+                logger.warning("Logout failed (session may have expired): %s", exc)
+            finally:
+                self._client = None

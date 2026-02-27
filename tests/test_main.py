@@ -7,7 +7,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, MagicMock, patch
 from redfish_mcp_server.client.redfish_client import RedfishClient
 from redfish_mcp_server.config.models import RedfishConfig
 
@@ -40,29 +40,90 @@ def test_redfish_client_initialization():
     assert client.timeout == 30
 
 
-@patch('redfish_mcp_server.main.requests.Session')
-def test_redfish_client_get_request(mock_session):
-    """Test GET request method."""
-    # Setup mock
-    mock_response = Mock()
-    mock_response.json.return_value = {"test": "data"}
-    mock_response.content = True
-    mock_session.return_value.request.return_value = mock_response
-
-    config = RedfishConfig(
-        host="https://192.168.1.100",
-        username="admin",
-        password="password123"
-    )
-    client = RedfishClient(config)
-
-    result = client.get("/redfish/v1/")
-
-    assert result == {"test": "data"}
-    mock_session.return_value.request.assert_called_once()
-
-
 from pydantic import SecretStr
+from redfish_mcp_server.utils.exceptions import AuthenticationError, ConnectionError
+
+
+def test_client_session_auth_login():
+    """Test client uses session auth by default."""
+    config = RedfishConfig(
+        host="https://192.168.100.23",
+        username="admin",
+        password="password123",
+        auth_method="session",
+    )
+    with patch("redfish_mcp_server.client.redfish_client.redfish_client") as mock_rf:
+        mock_obj = MagicMock()
+        mock_rf.return_value = mock_obj
+
+        client = RedfishClient(config)
+        client._login()
+
+        mock_rf.assert_called_once()
+        mock_obj.login.assert_called_once_with(auth="session")
+
+
+def test_client_basic_auth_fallback():
+    """Test client falls back to basic auth if session auth fails."""
+    config = RedfishConfig(
+        host="https://192.168.100.23",
+        username="admin",
+        password="password123",
+        auth_method="session",
+    )
+    with patch("redfish_mcp_server.client.redfish_client.redfish_client") as mock_rf:
+        mock_obj = MagicMock()
+        mock_rf.return_value = mock_obj
+        # Session auth fails
+        mock_obj.login.side_effect = [Exception("SessionService not found"), None]
+
+        client = RedfishClient(config)
+        client._login()
+
+        assert mock_obj.login.call_count == 2
+        mock_obj.login.assert_called_with(auth="basic")
+
+
+def test_client_close_calls_logout():
+    """Test close() calls logout on the DMTF client."""
+    config = RedfishConfig(
+        host="https://192.168.100.23",
+        username="admin",
+        password="password123",
+    )
+    with patch("redfish_mcp_server.client.redfish_client.redfish_client") as mock_rf:
+        mock_obj = MagicMock()
+        mock_rf.return_value = mock_obj
+
+        client = RedfishClient(config)
+        client._client = mock_obj
+        client.close()
+
+        mock_obj.logout.assert_called_once()
+
+
+def test_client_get_delegates_to_dmtf():
+    """Test get() delegates to DMTF client and returns dict."""
+    config = RedfishConfig(
+        host="https://192.168.100.23",
+        username="admin",
+        password="password123",
+    )
+    with patch("redfish_mcp_server.client.redfish_client.redfish_client") as mock_rf:
+        mock_obj = MagicMock()
+        mock_rf.return_value = mock_obj
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.dict = {"Id": "1", "Name": "System"}
+        mock_obj.get.return_value = mock_response
+
+        client = RedfishClient(config)
+        client._client = mock_obj
+        result = client.get("/redfish/v1/Systems/1")
+
+        mock_obj.get.assert_called_once_with("/redfish/v1/Systems/1")
+        assert result == {"Id": "1", "Name": "System"}
 
 def test_redfish_config_secret_str():
     """Test RedfishConfig uses SecretStr for password."""
