@@ -53,7 +53,7 @@ def _initialize_from_env() -> Optional[RedfishClient]:
     username = os.getenv('REDFISH_USERNAME')
     password = os.getenv('REDFISH_PASSWORD')
     verify_ssl = os.getenv('REDFISH_VERIFY_SSL', 'false').lower() in ('true', '1', 'yes')
-    timeout = int(os.getenv('REDFISH_TIMEOUT', '30'))
+    timeout = int(os.getenv('REDFISH_TIMEOUT', '60'))
     auth_method = os.getenv('REDFISH_AUTH_METHOD', 'session')
     bmc_vendor = os.getenv('REDFISH_BMC_VENDOR', 'asrockrack')
 

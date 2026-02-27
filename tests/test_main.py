@@ -23,7 +23,7 @@ def test_redfish_config():
     assert config.username == "admin"
     assert config.password.get_secret_value() == "password123"
     assert config.verify_ssl is False
-    assert config.timeout == 30
+    assert config.timeout == 60
 
 
 def test_redfish_client_initialization():
@@ -37,7 +37,7 @@ def test_redfish_client_initialization():
 
     assert client.config == config
     assert client.base_url == "https://192.168.1.100"
-    assert client.timeout == 30
+    assert client.timeout == 60
 
 
 from pydantic import SecretStr
