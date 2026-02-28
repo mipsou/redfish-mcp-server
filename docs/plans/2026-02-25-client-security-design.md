@@ -38,6 +38,24 @@ Remplace l'impl\u00e9mentation `requests` + Basic Auth actuelle.
 - Reconnexion auto si token expir\u00e9 (401)
 - Warnings log selon niveau de s\u00e9cu
 - Plus de `urllib3.disable_warnings()` global
+- **`timeout=60`** par d\u00e9faut (handshake TLS AST2500 ~17s mesur\u00e9)
+
+## Findings terrain (2026-02-28)
+
+| Mesure | Valeur |
+|--------|--------|
+| TLS handshake BMC | **~17 secondes** (AST2500 + self-signed cert) |
+| Protocole n\u00e9goci\u00e9 | TLSv1.3 |
+| Cipher | TLS_AES_256_GCM_SHA384 |
+| Cert BMC | Self-signed AMI (CN=megarac.com, RSA-SHA256 2048-bit, 2019-2034) |
+| GET /redfish/v1/ (total) | ~21s (handshake + HTTP) |
+| Session POST | ~10s (apr\u00e8s handshake initial) |
+| Serveur HTTP BMC | lighttpd |
+| HTTP 80 | Redirect 301 \u2192 HTTPS 443 |
+
+**Cause du timeout :** Le processeur cryptographique AST2500 est lent pour le handshake TLS.
+Le timeout de 30s \u00e9tait trop serr\u00e9 (17s handshake + latence r\u00e9seau + traitement requ\u00eate).
+Augment\u00e9 \u00e0 60s pour garder de la marge.
 
 ## Phase 2 (futur) \u2014 Monte\u00e9 s\u00e9cu
 
