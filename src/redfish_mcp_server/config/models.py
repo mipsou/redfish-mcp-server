@@ -10,7 +10,7 @@ class RedfishConfig(BaseModel):
     username: str = Field(..., description="Username for authentication")
     password: SecretStr = Field(..., description="Password for authentication")
     verify_ssl: bool = Field(default=False, description="Verify SSL certificates")
-    timeout: int = Field(default=30, description="Request timeout in seconds")
+    timeout: int = Field(default=60, description="Request timeout in seconds (AST2500 TLS handshake ~17s)")
     auth_method: str = Field(default="session", description="Auth method: 'session' or 'basic'")
     bmc_vendor: str = Field(default="asrockrack", description="BMC vendor (qualified: asrockrack)")
     # Ready for phase 2 — mTLS
